@@ -17,10 +17,16 @@ npm run start:lan       # 同一ネットワーク（スマホ）からも → �
 |---|---|---|
 | `REVIEW_PORT` | `8788` | ポート |
 | `REVIEW_HOST` | `127.0.0.1` | バインド先。`0.0.0.0` でトークン認証が有効になる |
-| `REVIEW_DIR` | `./reports` | 報告資料と台帳（`reports.json`）を置くディレクトリ |
+| `REVIEW_DIR` | `./reports` | 報告資料と台帳（`reports.json`）を置くディレクトリ（git 管理外。台帳はアプリが実行時に書き換えるため） |
 | `REVIEW_TOKEN` | 自動生成（`data/token.txt`） | LAN 公開時のトークン固定用 |
 
 **このアプリは tmux にキーを送れる**（レビュー送信）。信頼できるネットワークでのみ公開すること。
+
+初めて試すときはサンプル報告をコピーすると一覧に1件並ぶ:
+
+```bash
+cp examples/* reports/
+```
 
 ## ワークフロー
 
