@@ -22,12 +22,6 @@ npm run start:lan       # 同一ネットワーク（スマホ）からも → �
 
 **このアプリは tmux にキーを送れる**（レビュー送信）。信頼できるネットワークでのみ公開すること。
 
-初めて試すときはサンプル報告をコピーすると一覧に1件並ぶ:
-
-```bash
-cp examples/* reports/
-```
-
 ## ワークフロー
 
 1. Claude Code のセッションが報告資料を書き、`<REVIEW_DIR>/reports.json` に `status: "unread"` で登録する
