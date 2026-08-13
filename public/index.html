@@ -1,0 +1,974 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Review Deck</title>
+<link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">📄</text></svg>'>
+<script src="/vendor/mermaid.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+    background: #f2f4f8; color: #23262f; min-height: 100vh;
+  }
+  header {
+    display: flex; align-items: baseline; gap: 14px; padding: 18px 26px 12px;
+    position: sticky; top: 0; background: #f2f4f8ee; z-index: 10;
+  }
+  header h1 { font-size: 19px; }
+  header .path { font-size: 11px; color: #99a; font-family: ui-monospace, monospace; word-break: break-all; }
+  header #connText { margin-left: auto; font-size: 11px; color: #889; white-space: nowrap; }
+  main { max-width: 860px; margin: 0 auto; padding: 4px 26px 80px; }
+  main h3 { font-size: 12px; color: #889; letter-spacing: 1px; margin: 18px 0 4px; }
+  .empty-note { color: #99a; font-size: 12px; }
+  main .empty-note { margin-top: 30px; line-height: 1.9; }
+  main .empty-note code { background: #e8eaf1; border-radius: 4px; padding: 1px 5px; }
+
+  .report { border: 1px solid #e2e5ee; border-radius: 12px; padding: 12px 14px; margin: 10px 0; background: #fff; }
+  .report.unread { border-color: #f0c04a; background: #fffdf4; }
+  .report .rhead { font-size: 13.5px; line-height: 1.5; }
+  .report .rdate { color: #99a; font-size: 11px; margin-left: 6px; }
+  .report .ractions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .report .ractions a, .report .ractions button {
+    font-size: 12px; padding: 5px 12px; border-radius: 8px; border: 1px solid #ccd;
+    background: #fff; color: #345; cursor: pointer; text-decoration: none; font-family: inherit;
+  }
+  .report .ractions a.primary, .report .ractions button.primary { background: #3b5bd8; color: #fff; border-color: #3b5bd8; }
+  .badge { font-size: 11px; padding: 3px 10px; border-radius: 999px; background: #eef0f6; color: #445; }
+  .qbox {
+    background: #fff8e6; border: 1px solid #f0d894; border-radius: 10px;
+    padding: 12px; font-size: 13px; line-height: 1.65; white-space: pre-wrap;
+  }
+
+  /* 資料のサイドピーク（Artifact のような読み物ビュー） */
+  #docPeek {
+    position: fixed; z-index: 40; top: 0; right: 0; height: 100%; width: 62vw; min-width: 520px;
+    background: #fff; box-shadow: -16px 0 48px #00000055; transform: translateX(103%);
+    transition: transform .28s ease; display: flex; flex-direction: column;
+  }
+  /* レビュー送信パネルだけは資料ピーク（z-index 40）より前に出す */
+  #panel.front { z-index: 50; }
+  #docPeek.open { transform: translateX(0); }
+  #docPeek.resizing { transition: none; user-select: none; }
+  #docPeek .dpresizer {
+    position: absolute; left: 0; top: 0; width: 8px; height: 100%; cursor: ew-resize; z-index: 5;
+  }
+  #docPeek .dpresizer:hover, #docPeek.resizing .dpresizer { background: #7d9af055; }
+  #docPeek .dphead {
+    display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+    border-bottom: 1px solid #e6e8ef; background: #fbfbfd;
+  }
+  #docPeek .dphead h2 { font-size: 14px; flex: 1; margin: 0; line-height: 1.5; }
+  #docPeek .dphead button {
+    border: 1px solid #ccd; background: #fff; border-radius: 8px; padding: 7px 12px;
+    font-size: 12px; cursor: pointer; font-family: inherit; white-space: nowrap;
+  }
+  #docPeek .dphead button.primary { background: #3b5bd8; border-color: #3b5bd8; color: #fff; }
+  #docPeek .dpbody { flex: 1; display: flex; overflow: hidden; }
+  #docPeek .docbody {
+    flex: 1; overflow-y: auto; padding: 28px 34px 80px; user-select: text;
+    font-size: 14.5px; line-height: 1.95; color: #23262f;
+  }
+  #docPeek .docbody h1 { font-size: 21px; margin: 22px 0 10px; line-height: 1.5; }
+  #docPeek .docbody h2 { font-size: 17px; margin: 26px 0 8px; border-bottom: 1px solid #eceef4; padding-bottom: 5px; }
+  #docPeek .docbody h3 { font-size: 15px; margin: 18px 0 6px; }
+  #docPeek .docbody p { margin: 10px 0; }
+  #docPeek .docbody ul { margin: 8px 0 8px 22px; }
+  #docPeek .docbody table { border-collapse: collapse; margin: 12px 0; font-size: 12.5px; width: 100%; }
+  #docPeek .docbody th, #docPeek .docbody td { border: 1px solid #e2e5ee; padding: 6px 9px; text-align: left; }
+  #docPeek .docbody th { background: #f5f6fa; }
+  #docPeek .docbody pre.codeblock {
+    background: #f6f7fb; border: 1px solid #e6e8ef; border-radius: 8px; padding: 10px 12px;
+    overflow-x: auto; font-size: 12.5px; line-height: 1.6;
+  }
+  #docPeek .docbody pre.mermaid { background: none; border: 0; text-align: center; margin: 16px 0; }
+  #docPeek .docbody pre.mermaid svg { max-width: 100%; height: auto; }
+  #docPeek .docbody code { background: #f2f3f8; border-radius: 4px; padding: 1px 5px; font-size: 12.5px; }
+  #docPeek .docbody mark { background: #ffe9a8; border-bottom: 2px solid #f0b429; cursor: pointer; padding: 1px 0; }
+  #docPeek .docbody mark.done { background: #edf0f5; border-bottom-color: #c3c8d4; }
+  #docPeek iframe { width: 100%; height: 100%; border: 0; background: #fff; }
+  #docPeek .margin {
+    width: 300px; flex-shrink: 0; border-left: 1px solid #e6e8ef; background: #fafbfd;
+    overflow-y: auto; padding: 14px 12px 60px;
+  }
+  #docPeek .margin h4 { font-size: 11px; color: #889; letter-spacing: 1px; margin: 0 0 8px; }
+  .cnote {
+    background: #fff8e6; border: 1px solid #f0d894; border-left: 4px solid #f0b429;
+    border-radius: 8px; padding: 7px 10px; margin: 6px 0; font-size: 12px; line-height: 1.6;
+  }
+  .cnote.done { background: #f2f4f8; border-color: #d8dce6; border-left-color: #aab; color: #778; }
+  .cnote .cmeta { font-size: 10px; color: #99a; margin-top: 3px; display: flex; gap: 8px; }
+  .cnote .cmeta button { border: none; background: none; color: #667; cursor: pointer; font-size: 10.5px; padding: 0; font-family: inherit; }
+  .cnote .cmeta button:hover { color: #3b5bd8; text-decoration: underline; }
+  .cnote .miss { color: #a3562c; }
+  .cnote .miss[data-act] { cursor: pointer; text-decoration: underline; }
+  .cnote textarea { width: 100%; min-height: 54px; border: 1px solid #ccd; border-radius: 6px; padding: 6px; font: inherit; font-size: 12px; }
+  .overall { margin-top: 18px; border-top: 1px solid #e6e8ef; padding-top: 12px; }
+  .overall textarea { width: 100%; min-height: 64px; border: 1px solid #ccd; border-radius: 8px; padding: 8px; font: inherit; font-size: 12px; }
+  .overall button { margin-top: 5px; border: 1px solid #ccd; background: #fff; border-radius: 8px; padding: 5px 12px; font-size: 11.5px; cursor: pointer; font-family: inherit; }
+  #selPop {
+    position: fixed; z-index: 45; display: none; background: #2f3542; color: #fff;
+    border-radius: 8px; padding: 7px 12px; font-size: 12px; cursor: pointer;
+    box-shadow: 0 6px 20px #0005;
+  }
+  #selPop:hover { background: #3f4657; }
+  .cbox {
+    position: fixed; z-index: 46; display: none; width: 320px; background: #fff;
+    border: 1px solid #ccd; border-radius: 12px; box-shadow: 0 12px 36px #0004; padding: 12px;
+  }
+  .cbox .quote {
+    font-size: 11.5px; color: #667; background: #fffbef; border-left: 3px solid #f0b429;
+    padding: 5px 8px; margin-bottom: 8px; max-height: 66px; overflow: hidden; line-height: 1.5;
+  }
+  .cbox textarea { width: 100%; min-height: 68px; border: 1px solid #ccd; border-radius: 8px; padding: 8px; font: inherit; font-size: 13px; }
+  .cbox .row { display: flex; gap: 6px; justify-content: flex-end; margin-top: 8px; }
+  .cbox button { padding: 6px 12px; border-radius: 8px; font-size: 12px; cursor: pointer; border: 1px solid #ccd; background: #fff; font-family: inherit; }
+  .cbox button.primary { background: #3b5bd8; border-color: #3b5bd8; color: #fff; }
+
+  /* レビュー送信パネル */
+  #panel {
+    position: fixed; z-index: 20; top: 0; right: 0; height: 100%; width: 480px; max-width: 92vw;
+    background: #fff; box-shadow: -12px 0 40px #0007;
+    transform: translateX(102%); transition: transform .25s ease; overflow-y: auto;
+  }
+  #panel.open { transform: translateX(0); }
+  #panel .inner { padding: 22px 22px 40px; }
+  #panel .close {
+    position: absolute; top: 12px; right: 14px; border: none; background: #eef0f6;
+    width: 30px; height: 30px; border-radius: 50%; cursor: pointer; font-size: 15px;
+  }
+  #panel h2 { font-size: 17px; margin: 2px 40px 10px 0; }
+  #panel .sec { margin-top: 16px; }
+  #panel .sec h3 { font-size: 12px; color: #889; letter-spacing: 1px; margin-bottom: 6px; }
+  #panel select { width: 100%; padding: 6px 8px; border-radius: 8px; border: 1px solid #ccd; font-size: 12.5px; background: #fff; }
+  #panel textarea {
+    width: 100%; min-height: 220px; border: 1px solid #ccd; border-radius: 10px;
+    padding: 10px; font-size: 12px; font-family: ui-monospace, monospace; resize: vertical; line-height: 1.6;
+  }
+  #panel .send {
+    margin-top: 10px; width: 100%; padding: 10px; border: none; border-radius: 10px;
+    background: #3b5bd8; color: #fff; font-size: 14px; cursor: pointer; font-family: inherit;
+  }
+  #panel .send:disabled { background: #aab; cursor: default; }
+  #panel .sendResult { margin-top: 8px; font-size: 12px; line-height: 1.5; }
+  #panel .sendResult.ok { color: #1c7a48; }
+  #panel .sendResult.ng { color: #a33; }
+
+  @media (max-width: 820px) {
+    #docPeek { width: 100%; min-width: 0; }
+    #docPeek .margin { display: none; }
+    #docPeek .docbody { padding: 18px 16px 80px; }
+    main { padding: 4px 14px 80px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📄 Review Deck</h1>
+  <span class="path" id="hdrPath"></span>
+  <span id="connText">接続中…</span>
+</header>
+<main id="list"></main>
+
+<div id="docPeek">
+  <div class="dpresizer" id="dpResizer"></div>
+  <div class="dphead">
+    <h2 id="dpTitle"></h2>
+    <span id="dpVariants" style="display:flex;gap:6px"></span>
+    <button id="dpDiagram" hidden></button>
+    <button id="dpResolveAll" hidden></button>
+    <button id="dpSend" class="primary">レビューを Claude に返す</button>
+    <button id="dpClose">✕ 閉じる</button>
+  </div>
+  <div class="dpbody">
+    <div class="docbody" id="dpDoc"></div>
+    <div class="margin" id="dpMargin"></div>
+  </div>
+</div>
+<div id="selPop">💬 コメントする</div>
+<div class="cbox" id="cbox">
+  <div class="quote" id="cboxQuote"></div>
+  <textarea id="cboxText" placeholder="この箇所へのコメント（Ctrl/Cmd+Enter で保存）"></textarea>
+  <div id="cboxErr" style="color:#a33;font-size:11.5px;margin-top:6px;line-height:1.5"></div>
+  <div class="row"><button id="cboxCancel">やめる</button><button class="primary" id="cboxSave">コメントを追加</button></div>
+</div>
+<div id="panel"><button class="close" onclick="closePanel()">✕</button><div class="inner" id="panelBody"></div></div>
+
+<script>
+"use strict";
+let state = null;
+const $ = (id) => document.getElementById(id);
+function esc(s) { return String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+/* ---------- 報告一覧 ---------- */
+const isRead = (r) => ["read", "reviewed"].includes(r.status);
+
+function reportRow(r) {
+  return `
+  <div class="report ${isRead(r) ? "" : "unread"}" data-id="${esc(r.id)}">
+    <div class="rhead"><b>${esc(r.title || r.id)}</b>
+      <span class="rdate">${esc(r.date || "")}</span>
+      ${r.comments?.length ? `<span class="badge" style="background:#fff2cf;color:#96700a">💬 ${r.comments.filter((c) => !c.resolved).length}/${r.comments.length}</span>` : ""}
+      ${r.reviewResponse ? `<span class="badge" style="background:#e3f0e6;color:#1c7a48" title="${esc(r.reviewResponse)}">↻ レビュー反映済み</span>` : ""}</div>
+    <div class="ractions">
+      ${r.file ? `<button class="primary" data-act="doc">📄 資料を開く</button>` : ""}
+      ${r.artifactUrl ? `<a href="${esc(r.artifactUrl)}" target="_blank" rel="noopener">Artifact を開く ↗</a>` : ""}
+      <button data-act="toggle">${isRead(r) ? "未読に戻す" : "既読にする"}</button>
+    </div>
+    ${r.review ? `<div class="qbox" style="margin-top:8px"><b>全体レビュー:</b><br>${esc(r.review)}</div>` : ""}
+  </div>`;
+}
+
+function renderList() {
+  const reports = state?.reports || [];
+  const unread = reports.filter((r) => !isRead(r));
+  const read = reports.filter(isRead);
+  document.title = (unread.length ? `(${unread.length}) ` : "") + "📄 Review Deck";
+  $("hdrPath").textContent = state?.ledger || "";
+  $("list").innerHTML = `
+    ${reports.length === 0 ? `<div class="empty-note">報告はまだありません。Claude が報告資料を保存して
+      <code>reports.json</code> に登録すると、ここに並びます（submit-report skill 参照）。</div>` : ""}
+    ${unread.length ? `<h3>未読（${unread.length}）</h3>${unread.map(reportRow).join("")}` : ""}
+    ${read.length ? `<h3>既読（${read.length}）</h3>${read.map(reportRow).join("")}` : ""}
+  `;
+  $("list").querySelectorAll(".report").forEach((row) => {
+    const r = (state?.reports || []).find((x) => x.id === row.dataset.id);
+    row.querySelector('[data-act="toggle"]').addEventListener("click", () =>
+      postReport({ id: r.id, status: isRead(r) ? "unread" : "read" }));
+    row.querySelector('[data-act="doc"]')?.addEventListener("click", () => openDocPeek(r));
+  });
+}
+
+async function postReport(payload) {
+  const res = await fetch("/api/report", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) alert("更新に失敗: " + (await res.json()).error);
+  await reloadState();
+}
+
+/* ---------- 送信パネル ---------- */
+const panel = $("panel");
+const panelBody = $("panelBody");
+function closePanel() { panel.classList.remove("open", "front"); }
+
+/* ---------- 資料のサイドピーク（選択してコメント） ---------- */
+const docPeek = $("docPeek");
+const dpDoc = $("dpDoc");
+const dpMargin = $("dpMargin");
+const selPop = $("selPop");
+const cbox = $("cbox");
+let peekReport = null;
+let pendingQuote = "";
+let pendingCtx = null; // 選択箇所の位置情報 {occurrence, occurrenceTotal, heading}
+let peekFile = null;
+let selRect = null;
+
+function closeDocPeek() {
+  docPeek.classList.remove("open");
+  $("dpResolveAll").hidden = true;
+  peekReport = null;
+  hideSelPop();
+  cbox.style.display = "none";
+}
+$("dpClose").addEventListener("click", closeDocPeek);
+$("dpResolveAll").addEventListener("click", async () => {
+  const open = (peekReport?.comments || []).filter((c) => !c.resolved).length;
+  if (!open || !confirm(`未対応の ${open} 件をすべて対応済みにします。よろしいですか？`)) return;
+  const res = await fetch("/api/report/comment", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: peekReport.id, action: "resolve-all" }),
+  });
+  applyComments(await res.json());
+});
+$("dpDiagram").addEventListener("click", async () => {
+  peekDiagrams = !peekDiagrams;
+  localStorage.setItem("rdPeekText", peekDiagrams ? "0" : "1");
+  await applyDiagrams(docRoot());
+  renderAnnotations(); // 切り替えでハイライトが外れるので貼り直す
+});
+
+// 幅をドラッグで変えられるようにする（localStorage に保存）
+{
+  const savedW = Number(localStorage.getItem("rdPeekWidth"));
+  if (savedW >= 420) docPeek.style.width = Math.min(savedW, innerWidth * 0.96) + "px";
+  let resizing = false;
+  $("dpResizer").addEventListener("pointerdown", (e) => {
+    resizing = true;
+    docPeek.classList.add("resizing");
+    e.preventDefault();
+  });
+  addEventListener("pointermove", (e) => {
+    if (!resizing) return;
+    docPeek.style.width = Math.min(Math.max(innerWidth - e.clientX, 420), innerWidth * 0.96) + "px";
+  });
+  addEventListener("pointerup", () => {
+    if (!resizing) return;
+    resizing = false;
+    docPeek.classList.remove("resizing");
+    localStorage.setItem("rdPeekWidth", parseInt(docPeek.style.width, 10));
+  });
+}
+
+async function openDocPeek(report, file) {
+  peekReport = report;
+  peekFile = file || ((report.variants || []).some((v) => v.file === peekFile) ? peekFile : report.file);
+  $("dpTitle").textContent = report.title || report.id;
+  // テキスト版 / ビジュアル版 の切り替え
+  const vars = report.variants || [];
+  const vbox = $("dpVariants");
+  vbox.innerHTML = vars.length > 1
+    ? vars.map((v) => `<button data-file="${esc(v.file)}" class="${v.file === peekFile ? "primary" : ""}">${v.kind === "html" ? "🖼 ビジュアル版" : "📄 テキスト版"}</button>`).join("")
+    : "";
+  vbox.querySelectorAll("[data-file]").forEach((b) =>
+    b.addEventListener("click", () => openDocPeek(report, b.dataset.file)));
+  dpDoc.innerHTML = '<div class="empty-note">読み込み中…</div>';
+  dpMargin.innerHTML = "";
+  docPeek.classList.add("open");
+  try {
+    const res = await fetch(`/api/report-file?file=${encodeURIComponent(peekFile)}`);
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error);
+    if (d.kind === "html") {
+      // Artifact 用の HTML はそのまま描画する（srcdoc なので同一オリジンとして扱え、選択も拾える）
+      dpDoc.innerHTML = '<iframe id="dpFrame" sandbox="allow-same-origin allow-popups"></iframe>';
+      dpDoc.style.padding = "0";
+      const frame = $("dpFrame");
+      frame.srcdoc = d.markdown;
+      await new Promise((r) => frame.addEventListener("load", r, { once: true }));
+      bindSelection(frame.contentDocument);
+      await applyDiagrams(frame.contentDocument);
+      renderAnnotations();
+    } else {
+      dpDoc.style.padding = "";
+      dpDoc.innerHTML = miniMd(d.markdown);
+      await applyDiagrams(dpDoc);
+      renderAnnotations();
+    }
+  } catch (e) {
+    dpDoc.innerHTML = `<div class="empty-note">${esc(e.message)}</div>`;
+  }
+}
+
+// 本文の実体（md ならこの DOM、html なら iframe の中）
+function docRoot() {
+  const frame = $("dpFrame");
+  return frame?.contentDocument?.body || dpDoc;
+}
+
+// 「どこへの指摘か」を1行で表す（同じ文言が複数あるときに引用だけでは決まらないため）
+function locLabel(c) {
+  const parts = [];
+  const l = c.loc;
+  if (l?.line) parts.push(`${l.file}:${l.line}${l.endLine && l.endLine !== l.line ? `-${l.endLine}` : ""}`);
+  const head = c.heading || l?.heading;
+  if (head) parts.push(`「${head}」内`);
+  const total = l?.total || c.occurrenceTotal || 1;
+  if (total > 1) parts.push(`同じ文言の ${l?.occurrence || c.occurrence || 1}/${total} 個目`);
+  if (l && l.exact === false) parts.push("位置は概算");
+  return parts.join(" ・ ");
+}
+
+// 本文中の引用箇所を <mark> で囲み、右マージンにコメント一覧を出す
+function renderAnnotations() {
+  const comments = peekReport?.comments || [];
+  const root = docRoot();
+  root.querySelectorAll("mark[data-cid]").forEach((m) => m.replaceWith(...m.childNodes));
+  root.normalize(); // 分割したテキストノードを戻さないと次回の照合がずれる
+  usedSpans = [];
+  locateQueue = [];
+  if (root !== dpDoc && !root.querySelector("style[data-rd]")) {
+    const st = root.ownerDocument.createElement("style");
+    st.dataset.rd = "1";
+    st.textContent = "mark[data-cid]{background:#ffe9a8;border-bottom:2px solid #f0b429;cursor:pointer}"
+      + "mark[data-cid].done{background:#edf0f5;border-bottom-color:#c3c8d4}";
+    root.appendChild(st);
+  }
+  const missed = new Set();
+  for (const c of comments) if (!highlightQuote(c)) missed.add(c.id);
+  // 図として描画中の mermaid ソースに対するコメントは、ソース表示にすれば見つかる
+  const diagramSrc = [...root.querySelectorAll("pre.mermaid")].map((n) => n.dataset.src || "").join("\n");
+  const inDiagram = (c) => peekDiagrams && diagramSrc.includes((c.quote || "").trim().slice(0, 20));
+  const open = comments.filter((c) => !c.resolved).length;
+  dpMargin.innerHTML = `<h4>コメント（${open} 未対応 / ${comments.length}）</h4>`
+    + (comments.length ? "" : '<div class="empty-note">本文を選択すると、その箇所にコメントできます</div>');
+  const raBtn = $("dpResolveAll");
+  raBtn.hidden = !open;
+  raBtn.textContent = `✓ すべて対応済み（${open}）`;
+  for (const c of comments) {
+    const note = document.createElement("div");
+    note.className = "cnote" + (c.resolved ? " done" : "");
+    note.dataset.cid = c.id;
+    note.style.cursor = "pointer";
+    const why = !missed.has(c.id) ? ""
+      : inDiagram(c) ? '<span class="miss" data-act="toSource">📝 図のソース内 — クリックでソース表示に切り替え</span> ・ '
+      : '<span class="miss">⚠ 本文中に見つかりません（資料が更新された可能性）</span> ・ ';
+    const loc = locLabel(c);
+    note.innerHTML = `<div style="font-size:11px;color:#8a7a4a;margin-bottom:4px">${why}“${esc((c.quote || "").slice(0, 48))}”</div>
+      ${loc ? `<div class="cloc" style="font-size:10px;color:#9aa0ad;margin-bottom:4px">📍 ${esc(loc)}</div>` : ""}
+      <div class="ctext">${esc(c.text)}</div>
+      <div class="cmeta">
+        <button data-act="edit">編集</button>
+        <button data-act="resolve">${c.resolved ? "未対応に戻す" : "対応済み"}</button>
+        <button data-act="delete">削除</button>
+      </div>`;
+    note.addEventListener("click", () => {
+      const mk = docRoot().querySelector(`mark[data-cid="${c.id}"]`);
+      if (!mk) return;
+      mk.scrollIntoView({ behavior: "smooth", block: "center" });
+      mk.animate([{ background: "#ffcf5c" }, { background: "#ffe9a8" }], { duration: 1400 });
+    });
+    note.querySelectorAll("[data-act]").forEach((b) =>
+      b.addEventListener("click", async (ev) => {
+        ev.stopPropagation();
+        if (b.dataset.act === "edit") return startEdit(note, c);
+        if (b.dataset.act === "toSource") return $("dpDiagram").click();
+        const res = await fetch("/api/report/comment", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: peekReport.id, commentId: c.id, action: b.dataset.act }),
+        });
+        applyComments(await res.json());
+      }));
+    dpMargin.appendChild(note);
+  }
+  // 報告全体への所見（保存すると既読になる）
+  const overall = document.createElement("div");
+  overall.className = "overall";
+  overall.innerHTML = `<h4>報告全体へのコメント</h4>
+    <textarea id="ovText" placeholder="全体所見（保存すると既読になります）">${esc(peekReport?.review || "")}</textarea>
+    <button id="ovSave">保存</button>`;
+  overall.querySelector("#ovSave").addEventListener("click", async () => {
+    await postReport({ id: peekReport.id, review: overall.querySelector("#ovText").value });
+  });
+  dpMargin.appendChild(overall);
+  flushLocateQueue();
+}
+
+// コメントをその場で書き換える（textarea に差し替えて保存）
+function startEdit(note, c) {
+  const body = note.querySelector(".ctext");
+  if (!body || note.querySelector("textarea")) return;
+  body.innerHTML = `<textarea>${esc(c.text)}</textarea>
+    <div class="cmeta"><button data-e="save">保存</button><button data-e="cancel">やめる</button></div>`;
+  const ta = body.querySelector("textarea");
+  ta.focus();
+  ta.setSelectionRange(ta.value.length, ta.value.length);
+  const save = async () => {
+    const t = ta.value.trim();
+    if (!t) return;
+    const res = await fetch("/api/report/comment", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: peekReport.id, commentId: c.id, action: "edit", text: t }),
+    });
+    applyComments(await res.json());
+  };
+  body.querySelector('[data-e="save"]').addEventListener("click", (ev) => { ev.stopPropagation(); save(); });
+  body.querySelector('[data-e="cancel"]').addEventListener("click", (ev) => { ev.stopPropagation(); renderAnnotations(); });
+  ta.addEventListener("click", (ev) => ev.stopPropagation());
+  ta.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); save(); }
+    if (e.key === "Escape") renderAnnotations();
+  });
+}
+
+// 保存済みコメントの引用文を本文から探して囲む（閉じて開き直しても復元される）。
+//  - surroundContents は要素をまたぐ選択だと必ず例外になる → テキストノードごとに分割して囲む
+//  - 空白・改行のゆらぎで indexOf が外れる → 正規化した文字列で照合し、元の位置へ引き直す
+function normalizeWithMap(s) {
+  let out = "", prevSpace = false;
+  const map = [];
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (/\s/.test(ch)) {
+      if (prevSpace) continue;
+      out += " "; map.push(i); prevSpace = true;
+    } else {
+      out += ch; map.push(i); prevSpace = false;
+    }
+  }
+  return { text: out, map };
+}
+
+let usedSpans = []; // 同じ引用が複数あるとき、コメント同士で同じ場所を取り合わないように
+let locateQueue = []; // 位置（ファイル:行）がまだ無いコメント
+const locateDone = new Set();
+
+// 位置を持たない既存コメントに、いま囲めた場所から位置を割り当てて台帳へ焼き付ける
+async function flushLocateQueue() {
+  const queue = locateQueue;
+  locateQueue = [];
+  for (const { c, occurrence, occurrenceTotal } of queue) {
+    if (locateDone.has(c.id) || !peekReport) continue;
+    locateDone.add(c.id);
+    const mk = docRoot().querySelector(`mark[data-cid="${c.id}"]`);
+    let heading = null;
+    for (const h of docRoot().querySelectorAll("h1,h2,h3,h4,h5,h6")) {
+      if (mk && h.compareDocumentPosition(mk) & Node.DOCUMENT_POSITION_FOLLOWING) heading = h.textContent.trim().slice(0, 120);
+    }
+    try {
+      const res = await fetch("/api/report/comment", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: peekReport.id, commentId: c.id, action: "locate", occurrence, occurrenceTotal, heading }),
+      });
+      const d = await res.json();
+      const fresh = d?.ok && Array.isArray(d.result) ? d.result.find((x) => x.id === c.id) : null;
+      if (!fresh) continue;
+      Object.assign(c, fresh);
+      const note = dpMargin.querySelector(`.cnote[data-cid="${c.id}"]`);
+      const label = locLabel(c);
+      if (note && label && !note.querySelector(".cloc")) {
+        const div = document.createElement("div");
+        div.className = "cloc";
+        div.style.cssText = "font-size:10px;color:#9aa0ad;margin-bottom:4px";
+        div.textContent = `📍 ${label}`;
+        note.insertBefore(div, note.children[1] || null);
+      }
+    } catch {
+      /* 位置が付かなくても引用だけで返せる */
+    }
+  }
+}
+
+function highlightQuote(c) {
+  const raw = (c.quote || "").trim();
+  if (raw.length < 2) return false;
+  const root = docRoot();
+  const doc = root.ownerDocument || document;
+  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  let full = "";
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    const pn = n.parentNode?.nodeName;
+    if (pn === "STYLE" || pn === "SCRIPT") continue;
+    nodes.push({ node: n, start: full.length, end: full.length + n.nodeValue.length });
+    full += n.nodeValue;
+  }
+  const F = normalizeWithMap(full);
+  const toOrig = (nAt, nLen) => {
+    const s = F.map[nAt];
+    const e = nAt + nLen - 1 < F.map.length ? F.map[nAt + nLen - 1] + 1 : full.length;
+    return [s, e];
+  };
+  // 完全一致 → 先頭24文字 → 先頭12文字 の順に、まだ使われていない出現を探す
+  const free = (s, e) => !usedSpans.some(([a, b]) => s < b && e > a);
+  let span = null;
+  // 短い引用は前方一致で拾うと的外れな場所を掴むので、完全一致だけにする
+  const cands = raw.length >= 12 ? [raw, raw.slice(0, 24), raw.slice(0, 12)] : [raw];
+  for (const cand of cands) {
+    if (cand.length < 2) break;
+    const nCand = normalizeWithMap(cand).text;
+    const hits = [];
+    for (let from = 0; ;) {
+      const nAt = F.text.indexOf(nCand, from);
+      if (nAt < 0) break;
+      hits.push(toOrig(nAt, nCand.length));
+      from = nAt + 1;
+    }
+    if (!hits.length) continue;
+    // 何個目の出現かを覚えてあるならそこを優先する（同じ文言が複数あっても取り違えない）
+    const want = hits[(Number(c.occurrence) || 1) - 1];
+    span = (want && free(...want) && cand === raw) ? want : hits.find((h) => free(...h)) || null;
+    if (span) {
+      // 位置未解決の古いコメントは、囲めた場所からその場で位置を割り出して台帳に補う
+      if (!c.loc) locateQueue.push({ c, occurrence: hits.indexOf(span) + 1, occurrenceTotal: hits.length });
+      break;
+    }
+  }
+  if (!span) return false;
+  usedSpans.push(span);
+
+  // テキストノード単位で分割して囲む（要素をまたいでも落ちない）
+  const [start, end] = span;
+  const targets = nodes.filter((n) => n.start < end && n.end > start);
+  let wrapped = 0;
+  for (const tn of targets) {
+    const s = Math.max(start, tn.start) - tn.start;
+    const e = Math.min(end, tn.end) - tn.start;
+    if (e <= s) continue;
+    try {
+      let node = tn.node;
+      if (e < node.nodeValue.length) node.splitText(e);
+      if (s > 0) node = node.splitText(s);
+      const mark = doc.createElement("mark");
+      mark.dataset.cid = c.id;
+      if (c.resolved) mark.className = "done";
+      mark.title = c.text;
+      mark.addEventListener("click", () => {
+        const note = dpMargin.querySelector(`.cnote[data-cid="${c.id}"]`);
+        note?.scrollIntoView({ behavior: "smooth", block: "center" });
+        note?.animate([{ background: "#ffe9a8" }, { background: "" }], { duration: 1200 });
+      });
+      node.parentNode.insertBefore(mark, node);
+      mark.appendChild(node);
+      wrapped++;
+    } catch {
+      /* 分割できないノードは飛ばす（他のノードで囲めていれば十分） */
+    }
+  }
+  return wrapped > 0;
+}
+
+// API の応答をそのまま反映する（/api/state の更新周期を待たない）
+function applyComments(payload) {
+  if (!payload?.ok) { alert(payload?.error || "コメントを保存できませんでした"); return; }
+  peekReport.comments = Array.isArray(payload.result) ? payload.result : peekReport.comments;
+  const inState = (state?.reports || []).find((r) => r.id === peekReport.id);
+  if (inState) inState.comments = peekReport.comments;
+  renderAnnotations();
+  renderList();
+}
+
+/* --- 選択 → コメント --- */
+const hideSelPop = () => { selPop.style.display = "none"; };
+
+// 同じ文言が資料に複数あると引用だけでは箇所が定まらないので、
+// 「本文の何個目の出現か」と「直前の見出し」を選択時に控えておく。
+// これを付けて保存すると、サーバ側が資料の行番号まで解決してくれる。
+function selectionContext(sel) {
+  const ctx = { occurrence: 1, occurrenceTotal: 1, heading: null };
+  try {
+    const root = docRoot();
+    const doc = root.ownerDocument || document;
+    const range = sel.getRangeAt(0);
+    const nq = sel.toString().replace(/\s+/g, " ").trim();
+    if (nq.length < 2) return ctx;
+    const pre = doc.createRange();
+    pre.selectNodeContents(root);
+    pre.setEnd(range.startContainer, range.startOffset);
+    const count = (hay) => {
+      let n = 0;
+      for (let from = 0; ; ) {
+        const at = hay.indexOf(nq, from);
+        if (at < 0) return n;
+        n++; from = at + 1;
+      }
+    };
+    ctx.occurrenceTotal = Math.max(1, count(root.textContent.replace(/\s+/g, " ")));
+    ctx.occurrence = Math.min(ctx.occurrenceTotal, count(pre.toString().replace(/\s+/g, " ")) + 1);
+    for (const h of root.querySelectorAll("h1,h2,h3,h4,h5,h6")) {
+      const rel = range.startContainer.compareDocumentPosition(h);
+      if (rel & Node.DOCUMENT_POSITION_PRECEDING || rel & Node.DOCUMENT_POSITION_CONTAINS) {
+        ctx.heading = h.textContent.trim().slice(0, 120);
+      }
+    }
+  } catch {
+    /* 位置が取れなくても引用だけで保存できる */
+  }
+  return ctx;
+}
+
+function bindSelection(doc) {
+  const win = doc.defaultView || window;
+  doc.addEventListener("mouseup", () => {
+    setTimeout(() => {
+      const sel = win.getSelection();
+      const text = sel?.toString().trim();
+      if (!text || text.length < 2) return hideSelPop();
+      if (!peekReport) return; // ピークの外の選択は対象外
+      const rect = sel.getRangeAt(0).getBoundingClientRect();
+      // iframe 内の座標は iframe の位置ぶんずらす
+      const frame = $("dpFrame");
+      const off = win === window || !frame ? { left: 0, top: 0 } : frame.getBoundingClientRect();
+      pendingQuote = text.slice(0, 300);
+      pendingCtx = selectionContext(sel);
+      // 画面座標で覚えておく（コメント枠の位置決めに使う）
+      selRect = {
+        left: off.left + rect.left, top: off.top + rect.top,
+        bottom: off.top + rect.bottom, width: rect.width,
+      };
+      selPop.style.display = "block";
+      selPop.style.left = Math.max(8, selRect.left + selRect.width / 2 - 60) + "px";
+      selPop.style.top = Math.max(8, selRect.top - 40) + "px";
+    }, 10);
+  });
+  doc.addEventListener("scroll", hideSelPop, true);
+}
+bindSelection(document);
+
+selPop.addEventListener("click", () => {
+  const r = selRect || selPop.getBoundingClientRect(); // 先に座標を確定させてから隠す
+  hideSelPop();
+  $("cboxQuote").textContent = `“${pendingQuote.slice(0, 120)}”`;
+  $("cboxText").value = "";
+  cbox.style.display = "block";
+  const W = 320, H = cbox.offsetHeight || 200;
+  const left = Math.min(Math.max(8, r.left), innerWidth - W - 12);
+  // 下に入らなければ選択範囲の上に出す
+  const below = r.bottom + 10;
+  const top = below + H < innerHeight - 12 ? below : Math.max(8, r.top - H - 10);
+  cbox.style.left = left + "px";
+  cbox.style.top = top + "px";
+  $("cboxText").focus();
+});
+$("cboxCancel").addEventListener("click", () => { cbox.style.display = "none"; });
+$("cboxSave").addEventListener("click", saveComment);
+$("cboxText").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveComment(); }
+  if (e.key === "Escape") cbox.style.display = "none";
+});
+
+async function saveComment() {
+  const box = $("cboxText");
+  const text = box.value.trim();
+  if (!text || !peekReport) return;
+  const err = $("cboxErr");
+  err.textContent = "";
+  // 保存できるまで入力欄は閉じない（サーバ再起動などで失われないように）
+  try {
+    const res = await fetch("/api/report/comment", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: peekReport.id, quote: pendingQuote, text, ...(pendingCtx || {}) }),
+    });
+    const payload = await res.json();
+    if (!res.ok || !payload.ok) throw new Error(payload.error || `保存に失敗しました (${res.status})`);
+    cbox.style.display = "none";
+    box.value = "";
+    window.getSelection()?.removeAllRanges();
+    $("dpFrame")?.contentWindow?.getSelection()?.removeAllRanges();
+    applyComments(payload);
+  } catch (e) {
+    err.textContent = `✗ ${e.message}｜内容は消していません。もう一度「コメントを追加」を押してください`;
+  }
+}
+
+/* --- レビューを Claude に返す --- */
+$("dpSend").addEventListener("click", () => {
+  if (!peekReport) return;
+  const open = (peekReport.comments || []).filter((c) => !c.resolved);
+  if (!open.length && !peekReport.review) return alert("返すコメントがありません。本文を選択してコメントを付けてください。");
+  // review-comments skill が解釈できる形式（@ 位置 / | 引用 / → コメント）で組み立てる
+  const quoteBlock = (q) => (q || "（全体）").trim().split("\n").map((l) => `| ${l}`).join("\n");
+  const items = [];
+  if (peekReport.review) items.push(`| （報告全体について）\n→ ${peekReport.review}`);
+  // 同じ文言が資料内に複数あっても箇所が決まるよう、引用の前に位置（ファイル:行）を添える
+  open.forEach((c) => {
+    const loc = locLabel(c);
+    items.push(`${loc ? `@ ${loc}\n` : ""}${quoteBlock(c.quote)}\n→ ${c.text}`);
+  });
+  const msg = [
+    `/review-comments ${peekReport.id}`,
+    "",
+    `# ${peekReport.title || peekReport.id}`,
+    `台帳: ${state?.ledger || "reports.json"}（この id のエントリの file が資料本体）`,
+    `指摘 ${items.length} 件です。「@」が指摘箇所の位置（資料のファイル:行／節／同じ文言の何個目か）、`
+      + `「|」で始まる行が報告書からの引用（もともとの本文）、「→」がそこへのレビューコメントです。`,
+    "",
+    ...items.map((t, i) => `[指摘 ${i + 1}/${items.length}]\n${t}`),
+  ].join("\n\n");
+  openSendReview(msg, peekReport.id);
+});
+
+function openSendReview(msg, reportId = null) {
+  const sessions = state?.sessions || [];
+  panelBody.innerHTML = `<h2>レビューを Claude に返す</h2>
+    <div class="sec"><h3>送り先のセッション</h3>
+      ${sessions.length ? `<select id="srTarget">
+        ${sessions.map((s) => `<option value="${esc(s.sessionId)}">${esc(s.name)}（${esc((s.cwd || "").split("/").pop())}）</option>`).join("")}
+      </select>` : '<div class="empty-note">生きている Claude Code セッションがありません。tmux 内で claude を起動してください。</div>'}
+      <div class="empty-note" id="srOrigin" style="margin-top:6px">${reportId ? "この資料を書いたセッションを探しています…" : ""}</div></div>
+    <div class="sec"><h3>送る内容</h3>
+      <textarea id="srText">${esc(msg)}</textarea></div>
+    <button class="send" id="srSend" ${sessions.length ? "" : "disabled"}>送信</button>
+    <div class="sendResult" id="srResult"></div>`;
+  panel.classList.add("open", "front"); // 資料ピークの上に出す
+  if (reportId) selectOriginSession(reportId);
+  $("srSend").addEventListener("click", async (ev) => {
+    const out = $("srResult");
+    ev.target.disabled = true;
+    try {
+      const res = await fetch("/api/reply", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: $("srTarget").value, text: $("srText").value }),
+      });
+      const d = await res.json();
+      out.className = "sendResult " + (res.ok ? "ok" : "ng");
+      out.textContent = res.ok ? `✓ 送りました（tmux ${d.pane}）` : `✗ ${d.error}`;
+      // Claude にレビューを返せた時点で既読にする（コメントを書いただけでは既読にしない）
+      if (res.ok && reportId) {
+        await fetch("/api/report", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: reportId, status: "read" }),
+        }).catch(() => {});
+        out.textContent += " ・ 既読にしました";
+        await reloadState();
+      }
+    } finally {
+      ev.target.disabled = false;
+    }
+  });
+}
+
+// 資料を書いたセッション（サブエージェントが書いた場合はその親）を送り先に自動で選ぶ
+async function selectOriginSession(reportId) {
+  const note = $("srOrigin");
+  const sel = $("srTarget");
+  try {
+    const res = await fetch(`/api/report-origin?id=${encodeURIComponent(reportId)}`);
+    const d = await res.json();
+    if (!note || !sel) return; // 待っている間に画面が変わった
+    if (!d.origin) {
+      note.textContent = "この資料を書いたセッションは特定できませんでした。送り先を選んでください。";
+      return;
+    }
+    const opt = [...sel.options].find((o) => o.value === d.origin.sessionId);
+    const who = d.origin.agentId
+      ? "この資料を書いたサブエージェントの親セッション"
+      : "この資料を書いたセッション";
+    if (opt) {
+      sel.value = opt.value;
+      note.textContent = `✓ 送り先 = ${who}「${d.name || opt.textContent}」`;
+    } else {
+      note.textContent = `⚠ ${who}（${d.origin.sessionId.slice(0, 8)}）は終了しています。別の送り先を選んでください。`;
+    }
+  } catch {
+    if (note) note.textContent = "送り先の自動選択に失敗しました。手動で選んでください。";
+  }
+}
+
+/* ---------- 超小型 markdown レンダラ（見出し/太字/コード/リスト/テーブルのみ） ---------- */
+function miniMd(md) {
+  const inline = (str) => esc(str)
+    .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
+    .replace(/`([^`]+)`/g, "<code>$1</code>");
+  const lines = md.split("\n");
+  const out = [];
+  let list = false, table = false, fence = null, buf = [];
+  const closeAll = () => {
+    if (list) { out.push("</ul>"); list = false; }
+    if (table) { out.push("</table>"); table = false; }
+  };
+  const flushFence = () => {
+    const body = buf.join("\n");
+    // mermaid はライブラリに描かせる。それ以外は素のコードブロック
+    out.push(fence === "mermaid"
+      ? `<pre class="mermaid">${esc(body)}</pre>`
+      : `<pre class="codeblock"><code>${esc(body)}</code></pre>`);
+    fence = null;
+    buf = [];
+  };
+
+  for (const line of lines) {
+    const f = line.match(/^\s*```\s*(\S*)\s*$/);
+    if (f) {
+      if (fence === null) { closeAll(); fence = (f[1] || "text").toLowerCase(); buf = []; }
+      else flushFence();
+      continue;
+    }
+    if (fence !== null) { buf.push(line); continue; }
+
+    const h = line.match(/^(#{1,3})\s+(.*)/);
+    if (h) { closeAll(); out.push(`<h${h[1].length}>${inline(h[2])}</h${h[1].length}>`); continue; }
+    if (/^\s*[-*]\s+/.test(line)) {
+      if (table) { out.push("</table>"); table = false; }
+      if (!list) { out.push("<ul>"); list = true; }
+      out.push(`<li>${inline(line.replace(/^\s*[-*]\s+/, ""))}</li>`);
+      continue;
+    }
+    if (/^\s*\|/.test(line)) {
+      if (/^[\s|:-]+$/.test(line)) continue;
+      if (list) { out.push("</ul>"); list = false; }
+      const cells = line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|");
+      if (!table) { out.push("<table>"); table = true; out.push(`<tr>${cells.map((c) => `<th>${inline(c.trim())}</th>`).join("")}</tr>`); }
+      else out.push(`<tr>${cells.map((c) => `<td>${inline(c.trim())}</td>`).join("")}</tr>`);
+      continue;
+    }
+    closeAll();
+    if (line.trim()) out.push(`<p>${inline(line)}</p>`);
+  }
+  if (fence !== null) flushFence();
+  closeAll();
+  return out.join("\n");
+}
+
+/* ---------- mermaid（図 ⇄ ソース切り替え） ---------- */
+let mermaidReady = false;
+// iframe（Artifact 用 html）は allow-scripts なしのサンドボックスなので中で
+// mermaid を動かせない。親で描画して SVG マークアップだけ差し込む。
+let peekDiagrams = localStorage.getItem("rdPeekText") !== "1";
+let mermaidSeq = 0;
+const DIAGRAM_CSS = "pre.mermaid{background:none;border:0;text-align:center;margin:16px 0}"
+  + "pre.mermaid svg{max-width:100%;height:auto}"
+  + "pre.mermaid.as-text{background:#f6f7fb;border:1px solid #e6e8ef;border-radius:8px;"
+  + "text-align:left;padding:12px;white-space:pre-wrap;font-size:12px;line-height:1.6}";
+
+async function applyDiagrams(root) {
+  const nodes = [...root.querySelectorAll("pre.mermaid")];
+  const btn = $("dpDiagram");
+  if (btn) {
+    btn.hidden = !nodes.length;
+    btn.textContent = peekDiagrams ? "📝 図をソースで見る" : "🖼 ソースを図で見る";
+  }
+  if (!nodes.length) return;
+  // iframe 側にも図用のスタイルを入れる
+  const doc = root.ownerDocument || root;
+  const host = doc.body || root;
+  if (!host.querySelector("style[data-rd-diagram]")) {
+    const st = doc.createElement("style");
+    st.dataset.rdDiagram = "1";
+    st.textContent = DIAGRAM_CSS;
+    host.appendChild(st);
+  }
+  if (typeof mermaid === "undefined") return;
+  if (!mermaidReady) {
+    mermaid.initialize({ startOnLoad: false, theme: "neutral", securityLevel: "loose" });
+    mermaidReady = true;
+  }
+  for (const n of nodes) {
+    if (n.dataset.src === undefined) n.dataset.src = n.textContent;
+    if (!peekDiagrams) {
+      n.textContent = n.dataset.src; // コメントを付けるためにソースへ戻す
+      n.classList.add("as-text");
+      continue;
+    }
+    n.classList.remove("as-text");
+    try {
+      const { svg } = await mermaid.render(`rd-mmd-${++mermaidSeq}`, n.dataset.src);
+      n.innerHTML = svg;
+    } catch (e) {
+      n.textContent = n.dataset.src; // 描けない図はソースのまま見せる
+      n.classList.add("as-text");
+      console.error("mermaid:", e);
+    }
+  }
+}
+
+/* ---------- 状態の受信（SSE + フォールバック） ---------- */
+function applyState(st) {
+  state = st;
+  renderList();
+  // ピークを開いている報告は、コメント・レビューが変わっていた場合だけ描き直す
+  if (peekReport) {
+    const fresh = (st.reports || []).find((r) => r.id === peekReport.id);
+    if (fresh) {
+      const sig = (r) => JSON.stringify([r.comments || [], r.review || null]);
+      const changed = sig(fresh) !== sig(peekReport);
+      peekReport = fresh;
+      if (changed && !dpMargin.querySelector("textarea:focus") && cbox.style.display !== "block") renderAnnotations();
+    }
+  }
+}
+
+async function reloadState() {
+  try {
+    const res = await fetch("/api/state");
+    if (res.ok) applyState(await res.json());
+  } catch {
+    /* SSE が生きていればそちらで追いつく */
+  }
+}
+
+function connect() {
+  const es = new EventSource("/events");
+  es.addEventListener("state", (ev) => {
+    $("connText").textContent = "● 接続中";
+    applyState(JSON.parse(ev.data));
+  });
+  es.onerror = () => { $("connText").textContent = "○ 再接続中…"; };
+}
+connect();
+</script>
+</body>
+</html>
