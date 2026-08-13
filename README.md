@@ -22,6 +22,44 @@ npm run start:lan       # 同一ネットワーク（スマホ）からも → �
 
 **このアプリは tmux にキーを送れる**（レビュー送信）。信頼できるネットワークでのみ公開すること。
 
+### クイックスタート（サンプル報告を1件入れて試す）
+
+`reports/` は git 管理外なので、初回は空の一覧が出る。次を貼り付けるとサンプル報告が「未読」で並び、
+コメント→ハイライト→レビュー送信の流れを試せる（試し終わったら2ファイルを消せば元通り）:
+
+````bash
+mkdir -p reports
+cat > reports/sample.md <<'EOF'
+# サンプル報告
+
+これは動作確認用のサンプルです。この文をドラッグ選択すると「💬 コメントする」が出ます。
+コメントした箇所は黄色くハイライトされ、右のマージンに一覧が並びます。
+
+```mermaid
+graph LR
+  A[Claude が報告を書く] --> B[reports.json に登録]
+  B --> C[ブラウザでレビュー]
+  C --> D[レビューを Claude に返す]
+  D --> A
+```
+
+ヘッダの「レビューを Claude に返す」で、未対応コメントを送り先セッションの tmux ペインへ注入できます。
+EOF
+cat > reports/reports.json <<'EOF'
+[
+  {
+    "id": "sample",
+    "title": "サンプル報告",
+    "date": "2026-01-01",
+    "artifactUrl": null,
+    "file": "sample.md",
+    "status": "unread",
+    "review": null
+  }
+]
+EOF
+````
+
 ## ワークフロー
 
 1. Claude Code のセッションが報告資料を書き、`<REVIEW_DIR>/reports.json` に `status: "unread"` で登録する
