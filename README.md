@@ -32,8 +32,8 @@ mkdir -p reports
 cat > reports/sample.md <<'EOF'
 # サンプル報告
 
-これは動作確認用のサンプルです。この文をドラッグ選択すると「💬 コメントする」が出ます。
-コメントした箇所は黄色くハイライトされ、右のマージンに一覧が並びます。
+これは動作確認用のサンプルです。この文をドラッグ選択すると「💬 コメント」「〜 取り消し線」が出ます。
+コメントした箇所は黄色くハイライトされ、取り消し線を引いた箇所は赤い線で消され、右のマージンに一覧が並びます。
 
 ```mermaid
 graph LR
@@ -66,8 +66,10 @@ EOF
    （規約は同梱の **submit-report skill**）。一覧に「未読」として並ぶ。
    - 既読セクションは見出しの「隠す / 表示する」ボタンで折りたためる（選択は localStorage に保存）。
 2. 「📄 資料を開く」でサイドピークに表示する。
-   - **本文をドラッグ選択すると「💬 コメントする」が出る**。コメントした箇所は黄色くハイライトされ、
+   - **本文をドラッグ選択すると「💬 コメント」と「〜 取り消し線」が出る**。コメントした箇所は黄色くハイライトされ、
      右のマージンに一覧が並ぶ（編集・対応済み・削除・すべて対応済み）。
+   - **「〜 取り消し線」は削除提案**。理由を書かずにワンクリックで保存され、本文は赤い取り消し線、マージンには
+     「✂ 削除提案」として並ぶ。理由を添えたければマージンの「編集」で後から書ける（空で保存すると理由が消える）。
    - ハイライトはテキストノード単位で囲むので、`<strong>` や表のセルをまたぐ選択でも付く。
      閉じて開き直しても復元される（空白ゆらぎ・先頭一致で追従）。
    - 同じ報告に **md と html が両方ある場合**、ヘッダのボタンで切り替えられる（同じ basename を自動で束ねる）。
@@ -76,7 +78,8 @@ EOF
      （図の中身にコメントを付けたいとき用）。mermaid はローカル同梱なのでオフラインでも動く。
    - マージン下部の「報告全体へのコメント」で全体所見も書ける（保存すると既読になる）。
 3. **「レビューを Claude に返す」**: 未対応コメントを `/review-comments <報告ID>` 形式
-   （`@ 位置` / `| 引用` / `→ コメント`）にまとめ、送り先セッションを選んで tmux ペインへ注入する。
+   （`@ 位置` / `| 引用` / `→ コメント`。取り消し線は `→ ✂ 削除提案：この引用部分を削除（理由: …）`）にまとめ、
+   送り先セッションを選んで tmux ペインへ注入する。
    - 送り先は**その資料を書いたセッションが自動で選ばれる**（サブエージェント作ならその親）。
      transcript を走査して特定し、結果は台帳の `origin` に焼き付けるので走査は報告1件につき1回。
    - 送れた時点で既読になる（コメントを書いただけでは未読のまま）。
@@ -114,8 +117,10 @@ ln -s "$PWD/skills/submit-report" ~/.claude/skills/submit-report
     "status": "unread",
     "review": null,
     "comments": [
-      { "id": "c…", "quote": "引用文", "text": "コメント", "resolved": false,
-        "occurrence": 1, "occurrenceTotal": 1, "loc": { "file": "…", "line": 12 } }
+      { "id": "c…", "kind": "comment", "quote": "引用文", "text": "コメント", "resolved": false,
+        "occurrence": 1, "occurrenceTotal": 1, "loc": { "file": "…", "line": 12 } },
+      { "id": "c…", "kind": "strike", "quote": "削除してほしい本文", "text": "", "resolved": false,
+        "occurrence": 1, "occurrenceTotal": 1, "loc": { "file": "…", "line": 20 } }
     ],
     "origin": { "sessionId": "…", "agentId": null },
     "reviewResponse": "2026-08-13 指摘3件に対応（…）"
@@ -124,6 +129,8 @@ ln -s "$PWD/skills/submit-report" ~/.claude/skills/submit-report
 ```
 
 `comments` と `origin` はこのアプリが書き込む。書き換え前の内容は `reports/.bak/` に30世代退避される。
+`kind` は `comment`（文章のコメント。`quote` は 120 字まで）か `strike`（取り消し線 = 削除提案。`text` は理由で空でもよく、
+`quote` は削除範囲そのものなので 1000 字まで）。`kind` が無い古いコメントは `comment` として扱う。
 
 ## 構成
 
@@ -144,6 +151,6 @@ public/vendor/      mermaid（ローカル同梱）
 - `GET /api/state` — 報告一覧 + 生きているセッション（SSE `/events` と同形）
 - `GET /api/report-file?file=<name>.md` — 報告資料を取得（報告ディレクトリ配下のみ）
 - `POST /api/report {id, status?|review?}` — 既読/未読・全体レビュー更新
-- `POST /api/report/comment {id, quote, text, ...}` — コメント追加（`action: edit|resolve|delete|resolve-all|locate` で操作）
+- `POST /api/report/comment {id, quote, text, kind?, ...}` — コメント追加（`kind: "strike"` で取り消し線。`action: edit|resolve|delete|resolve-all|locate` で操作）
 - `GET /api/report-origin?id=...` — 資料を書いたセッションを特定（台帳にキャッシュ）
 - `POST /api/reply {sessionId, text}` — tmux ペインへレビュー注入（ペイン不明時 409）

@@ -179,7 +179,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === "POST" && url.pathname === "/api/report/comment") {
-      const { id, anchorIndex, quote, text, commentId, action, occurrence, occurrenceTotal, heading } = await readBody(req);
+      const { id, anchorIndex, quote, text, kind, commentId, action, occurrence, occurrenceTotal, heading } = await readBody(req);
       // 同じ文言が複数ある資料でも箇所が一意に伝わるよう、「ファイル:行」を台帳に焼き付ける
       const report = (currentState?.reports || []).find((r) => r.id === id);
       const resolveLoc = async (q) =>
@@ -197,10 +197,10 @@ const server = http.createServer(async (req, res) => {
         result = await mutateComment(CONFIG.REPORTS_DIR, id, commentId, action, text);
       } else {
         result = await addComment(CONFIG.REPORTS_DIR, id, {
-          anchorIndex, quote, text, occurrence, occurrenceTotal, heading, loc: await resolveLoc(quote),
+          anchorIndex, quote, text, kind, occurrence, occurrenceTotal, heading, loc: await resolveLoc(quote),
         });
       }
-      if (!result) return json(res, 400, { error: "コメントを保存できませんでした（本文が空、または対象が見つかりません）" });
+      if (!result) return json(res, 400, { error: "コメントを保存できませんでした（本文または引用が空、または対象が見つかりません）" });
       json(res, 200, { ok: true, result });
       refresh();
       return;
