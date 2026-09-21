@@ -19,6 +19,13 @@ Review Deck は `<REPORTS_DIR>/reports.json`（台帳）を監視していて、
      （同名の md/html は Review Deck が自動で「テキスト版 / ビジュアル版」として束ねる）。
    - mermaid 図は ```mermaid フェンス（md）または `<pre class="mermaid">`（html）で書く。
      Review Deck が図として描画し、ソース表示にも切り替えられる。
+   - **画像・PDF を載せる場合**は `<REPORTS_DIR>/assets/<id>/` に**コピー**し、資料からは相対パスで参照する
+     （Review Deck は `<REPORTS_DIR>` の外のファイルを配信しないので、絶対パスや他ディレクトリへの参照は表示されない）。
+     - md: 画像は `![図1: キャプション](assets/<id>/fig.png)`、PDF は `![資料名](assets/<id>/doc.pdf)` を**1行で**書く
+       （ビューアごと埋め込まれる。文中に書くとリンクになる）。alt はキャプションとして本文に出る。
+     - html: `<img src="assets/<id>/fig.png">`。PDF は `<a href="assets/<id>/doc.pdf">` で張る
+       （`<iframe>`/`<embed>` で埋め込んでも sandbox 内では表示できず「開く」カードに置き換わる）。
+     - 使える形式: png / jpg / gif / webp / svg / pdf / mp4。
 2. **Artifact 化する（任意）**: Artifact ツールで公開し URL を得る。更新時は**同じファイルパスで republish** して URL を保つ。
 3. **台帳に登録する**: `<REPORTS_DIR>/reports.json`（無ければ `[]` で作る）に追記する:
 

@@ -109,6 +109,18 @@ function watchDir(dir, debounceMs) {
   }
 }
 
+// 報告資料から参照できる埋め込みファイル（/reports/<相対パス>）
+const ASSET_TYPES = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".svg": "image/svg+xml",
+  ".pdf": "application/pdf",
+  ".mp4": "video/mp4",
+};
+
 function json(res, code, obj) {
   res.writeHead(code, { "Content-Type": "application/json; charset=utf-8" });
   res.end(JSON.stringify(obj));
@@ -152,6 +164,31 @@ const server = http.createServer(async (req, res) => {
       try {
         const body = await fsp.readFile(path.join(__dirname, "public", "vendor", name));
         res.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8", "Cache-Control": "max-age=86400" });
+        res.end(body);
+      } catch {
+        json(res, 404, { error: "not found" });
+      }
+      return;
+    }
+
+    // 報告資料に埋め込む画像・PDF。REPORTS_DIR 配下（サブディレクトリ可）の許可した拡張子だけを返す
+    if (req.method === "GET" && url.pathname.startsWith("/reports/")) {
+      let rel;
+      try {
+        rel = decodeURIComponent(url.pathname.slice("/reports/".length));
+      } catch {
+        return json(res, 400, { error: "bad path" });
+      }
+      const abs = path.resolve(CONFIG.REPORTS_DIR, rel);
+      const type = ASSET_TYPES[path.extname(abs).toLowerCase()];
+      const inside = abs.startsWith(CONFIG.REPORTS_DIR + path.sep);
+      if (!type || !inside || rel.split(/[\\/]/).some((p) => p.startsWith("."))) return json(res, 404, { error: "not found" });
+      try {
+        const body = await fsp.readFile(abs);
+        const headers = { "Content-Type": type, "Cache-Control": "no-cache" };
+        // このオリジンは tmux にキーを送れるので、直接開かれた SVG の中のスクリプトは走らせない
+        if (type.startsWith("image/svg")) headers["Content-Security-Policy"] = "script-src 'none'";
+        res.writeHead(200, headers);
         res.end(body);
       } catch {
         json(res, 404, { error: "not found" });

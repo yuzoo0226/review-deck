@@ -90,8 +90,15 @@
   #docPeek .docbody pre.mermaid { background: none; border: 0; text-align: center; margin: 16px 0; }
   #docPeek .docbody pre.mermaid svg { max-width: 100%; height: auto; }
   #docPeek .docbody code { background: #f2f3f8; border-radius: 4px; padding: 1px 5px; font-size: 12.5px; }
-  /* 本文の mark（ハイライト・取り消し線）の見た目は MARK_CSS（JS 側）で md / iframe の両方に注入する */
+  /* 本文の mark（ハイライト・取り消し線・日本語再考の波線）の見た目は MARK_CSS（JS 側）で md / iframe の両方に注入する */
   #docPeek iframe { width: 100%; height: 100%; border: 0; background: #fff; }
+  /* 埋め込み画像・PDF（![alt](src)。パスは /reports/ 配下に解決する） */
+  #docPeek .docbody img { max-width: 100%; height: auto; }
+  #docPeek .docbody figure.doc-fig { margin: 14px 0; text-align: center; }
+  #docPeek .docbody figure.doc-fig figcaption { font-size: 12px; color: #778; margin-top: 4px; }
+  #docPeek .docbody .doc-pdf { margin: 14px 0; border: 1px solid #e6e8ef; border-radius: 8px; overflow: hidden; }
+  #docPeek .docbody .doc-pdf iframe { height: 70vh; display: block; }
+  #docPeek .docbody .doc-pdf .doc-pdf-bar { font-size: 12px; padding: 6px 10px; background: #f5f6fa; border-top: 1px solid #e6e8ef; }
   #docPeek .margin {
     width: 300px; flex-shrink: 0; border-left: 1px solid #e6e8ef; background: #fafbfd;
     overflow-y: auto; padding: 14px 12px 60px;
@@ -103,7 +110,8 @@
   }
   .cnote.strike { background: #fff1f1; border-color: #f0c0c0; border-left-color: #d64545; }
   .cnote.strike s { text-decoration-color: #d64545; }
-  .cnote.done { background: #f2f4f8; border-color: #d8dce6; border-left-color: #aab; color: #778; } /* .strike より後ろ（対応済みが勝つ） */
+  .cnote.rephrase { background: #eef4ff; border-color: #bcd0f5; border-left-color: #3b6fd8; }
+  .cnote.done { background: #f2f4f8; border-color: #d8dce6; border-left-color: #aab; color: #778; } /* .strike / .rephrase より後ろ（対応済みが勝つ） */
   .cnote .cmeta { font-size: 10px; color: #99a; margin-top: 3px; display: flex; gap: 8px; }
   .cnote .cmeta button { border: none; background: none; color: #667; cursor: pointer; font-size: 10.5px; padding: 0; font-family: inherit; }
   .cnote .cmeta button:hover { color: #3b5bd8; text-decoration: underline; }
@@ -123,7 +131,8 @@
     border-radius: 6px; cursor: pointer; font-family: inherit;
   }
   #selPop button:hover { background: #3f4657; }
-  #selPop button + button { margin-left: 1px; border-left: 1px solid #4a5263; border-radius: 0 6px 6px 0; }
+  #selPop button + button { margin-left: 1px; border-left: 1px solid #4a5263; border-radius: 0; }
+  #selPop button:last-child { border-radius: 0 6px 6px 0; }
   .cbox {
     position: fixed; z-index: 46; display: none; width: 320px; background: #fff;
     border: 1px solid #ccd; border-radius: 12px; box-shadow: 0 12px 36px #0004; padding: 12px;
@@ -198,7 +207,7 @@
     <div class="margin" id="dpMargin"></div>
   </div>
 </div>
-<div id="selPop"><button data-kind="comment">💬 コメント</button><button data-kind="strike" title="この部分の削除を提案する（理由は後から「編集」で追記できる）">〜 取り消し線</button></div>
+<div id="selPop"><button data-kind="comment" data-key="c" title="この箇所にコメントを書く（C キー）">💬 コメント</button><button data-kind="strike" data-key="d" title="この部分の削除を提案する（D キー。続けて理由を書ける・空のまま Enter でもよい）">〜 取り消し線</button><button data-kind="rephrase" data-key="j" title="日本語の文として崩れているので再考させる（J キー。続けて補足を書ける・空のまま Enter でもよい）">✍ 日本語を再考</button></div>
 <div class="cbox" id="cbox">
   <div class="quote" id="cboxQuote"></div>
   <textarea id="cboxText" placeholder="この箇所へのコメント（Ctrl/Cmd+Enter で保存）"></textarea>
@@ -212,7 +221,30 @@
 let state = null;
 const $ = (id) => document.getElementById(id);
 function esc(s) { return String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
-// 取り消し線（引用部分の削除提案）。text は理由で、空のこともある。古いコメントは kind を持たない = 通常コメント
+// ワンクリックで付ける種別（押した時点で保存し、続けて理由・補足の入力枠を開く）。text は理由・補足で、空のこともある。
+//   strike   = 取り消し線（引用部分の削除提案）
+//   rephrase = 日本語を再考（引用部分が日本語の文として崩れている → 意味を変えずに書き直させる）
+// send = Claude へ返すときの「→」行。記号だけ送り、意味は review-comments skill と送信メッセージ冒頭の凡例（legend）で1回だけ伝える
+const QUICK_KINDS = {
+  strike: {
+    cls: "strike", head: "✂ 削除提案", titleHead: "削除提案", label: "取り消し線",
+    flash: [{ background: "#ffd6d6" }, { background: "transparent" }],
+    ph: "削除の理由（任意・空で保存すると理由を消す）", boxPh: "削除の理由（任意）── 空のまま Enter で次へ",
+    noText: "（理由なし・「編集」で追記できます）",
+    send: (t) => `✂${t ? ` ${t}` : ""}`,
+    legend: "「→ ✂」は引用部分の削除提案（後ろの文は理由）",
+  },
+  rephrase: {
+    cls: "rephrase", head: "✍ 日本語再考", titleHead: "日本語再考", label: "「日本語を再考」",
+    flash: [{ background: "#cfe0ff" }, { background: "transparent" }],
+    ph: "どう崩れているかの補足（任意・空で保存すると補足を消す）", boxPh: "どう崩れているかの補足（任意）── 空のまま Enter で次へ",
+    noText: "（補足なし・「編集」で追記できます）",
+    send: (t) => `✍${t ? ` ${t}` : ""}`,
+    legend: "「→ ✍」は引用部分が日本語の文として崩れているので、意味を変えずに書き直してほしいという指摘（後ろの文は補足）",
+  },
+};
+// 古いコメントは kind を持たない = 通常コメント（null を返す）
+const quickKind = (c) => (Object.hasOwn(QUICK_KINDS, c?.kind) ? QUICK_KINDS[c.kind] : null);
 const isStrike = (c) => c?.kind === "strike";
 
 /* ---------- 報告一覧 ---------- */
@@ -284,6 +316,7 @@ const selPop = $("selPop");
 const cbox = $("cbox");
 let peekReport = null;
 let pendingQuote = "";
+let cboxQuick = null; // 入力枠が取り消し線・日本語再考の理由／補足を受けているとき { kind, commentId }（保存済みの指摘に追記する）
 let pendingTruncated = false; // 選択が長すぎて pendingQuote が途中で切れているか
 let pendingCtx = null; // 選択箇所の位置情報 {occurrence, occurrenceTotal, heading}
 let peekFile = null;
@@ -294,7 +327,7 @@ function closeDocPeek() {
   $("dpResolveAll").hidden = true;
   peekReport = null;
   hideSelPop();
-  cbox.style.display = "none";
+  closeCbox();
 }
 $("dpClose").addEventListener("click", closeDocPeek);
 $("dpResolveAll").addEventListener("click", async () => {
@@ -356,11 +389,16 @@ async function openDocPeek(report, file) {
     if (!res.ok) throw new Error(d.error);
     if (d.kind === "html") {
       // Artifact 用の HTML はそのまま描画する（srcdoc なので同一オリジンとして扱え、選択も拾える）
-      dpDoc.innerHTML = '<iframe id="dpFrame" sandbox="allow-same-origin allow-popups"></iframe>';
+      // srcdoc は base URL を持たないので、相対パスの画像が報告ディレクトリ（/reports/）から引けるよう <base> を差す
+      dpDoc.innerHTML = '<iframe id="dpFrame" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"></iframe>';
       dpDoc.style.padding = "0";
       const frame = $("dpFrame");
-      frame.srcdoc = d.markdown;
+      const base = `<base href="${esc(new URL("/reports/", location.href).href)}">`;
+      frame.srcdoc = /<head[^>]*>/i.test(d.markdown)
+        ? d.markdown.replace(/<head[^>]*>/i, (h) => h + base)
+        : base + d.markdown;
       await new Promise((r) => frame.addEventListener("load", r, { once: true }));
+      replacePdfEmbeds(frame.contentDocument);
       bindSelection(frame.contentDocument);
       await applyDiagrams(frame.contentDocument);
       renderAnnotations();
@@ -401,7 +439,11 @@ const MARK_CSS = "mark[data-cid]{background:#ffe9a8;border-bottom:2px solid #f0b
   // 取り消し線 = 削除提案。背景は付けず赤い線だけ（longhand で書く: shorthand はブラウザ差がある）
   + "mark[data-cid].strike{background:none;border-bottom:0;color:#a33;text-decoration:line-through;"
   + "text-decoration-color:#d64545;text-decoration-thickness:2px}"
-  + "mark[data-cid].strike.done{color:#778;text-decoration-color:#aab}";
+  + "mark[data-cid].strike.done{color:#778;text-decoration-color:#aab}"
+  // 日本語再考 = 「この文を書き直して」。スペルチェック風の青い波線（黄 = コメント / 赤線 = 削除 と見分けがつく色）
+  + "mark[data-cid].rephrase{background:none;border-bottom:0;color:inherit;text-decoration-line:underline;"
+  + "text-decoration-style:wavy;text-decoration-color:#3b6fd8;text-decoration-thickness:2px;text-underline-offset:3px}"
+  + "mark[data-cid].rephrase.done{text-decoration-color:#aab}";
 
 // 本文中の引用箇所を <mark> で囲み、右マージンにコメント一覧を出す
 function renderAnnotations() {
@@ -425,13 +467,14 @@ function renderAnnotations() {
   const inDiagram = (c) => peekDiagrams && diagramSrc.includes((c.quote || "").trim().slice(0, 20));
   const open = comments.filter((c) => !c.resolved).length;
   dpMargin.innerHTML = `<h4>コメント（${open} 未対応 / ${comments.length}）</h4>`
-    + (comments.length ? "" : '<div class="empty-note">本文を選択すると、その箇所にコメントか取り消し線（削除提案）を付けられます</div>');
+    + (comments.length ? "" : '<div class="empty-note">本文を選択すると、その箇所にコメント・取り消し線（削除提案）・日本語の再考を付けられます（C / D / J キーでも選べます）</div>');
   const raBtn = $("dpResolveAll");
   raBtn.hidden = !open;
   raBtn.textContent = `✓ すべて対応済み（${open}）`;
   for (const c of comments) {
     const note = document.createElement("div");
-    note.className = "cnote" + (isStrike(c) ? " strike" : "") + (c.resolved ? " done" : "");
+    const qk = quickKind(c);
+    note.className = "cnote" + (qk ? ` ${qk.cls}` : "") + (c.resolved ? " done" : "");
     note.dataset.cid = c.id;
     note.style.cursor = "pointer";
     const why = !missed.has(c.id) ? ""
@@ -439,9 +482,9 @@ function renderAnnotations() {
       : '<span class="miss">⚠ 本文中に見つかりません（資料が更新された可能性）</span> ・ ';
     const loc = locLabel(c);
     const quoteHtml = `“${esc((c.quote || "").slice(0, 48))}”`;
-    // 取り消し線は本文（理由）が無いことが多いので、見出し語を付けて何の指摘か分かるようにする
-    const textHtml = !isStrike(c) ? esc(c.text)
-      : `✂ 削除提案${c.text ? `：${esc(c.text)}` : '<span style="color:#99a">（理由なし・「編集」で追記できます）</span>'}`;
+    // ワンクリック種別は本文（理由・補足）が無いことが多いので、見出し語を付けて何の指摘か分かるようにする
+    const textHtml = !qk ? esc(c.text)
+      : `${qk.head}${c.text ? `：${esc(c.text)}` : `<span style="color:#99a">${qk.noText}</span>`}`;
     note.innerHTML = `<div style="font-size:11px;color:#8a7a4a;margin-bottom:4px">${why}${isStrike(c) ? `<s>${quoteHtml}</s>` : quoteHtml}</div>
       ${loc ? `<div class="cloc" style="font-size:10px;color:#9aa0ad;margin-bottom:4px">📍 ${esc(loc)}</div>` : ""}
       <div class="ctext">${textHtml}</div>
@@ -454,9 +497,7 @@ function renderAnnotations() {
       const mk = docRoot().querySelector(`mark[data-cid="${c.id}"]`);
       if (!mk) return;
       mk.scrollIntoView({ behavior: "smooth", block: "center" });
-      mk.animate(isStrike(c)
-        ? [{ background: "#ffd6d6" }, { background: "transparent" }]
-        : [{ background: "#ffcf5c" }, { background: "#ffe9a8" }], { duration: 1400 });
+      mk.animate(qk ? qk.flash : [{ background: "#ffcf5c" }, { background: "#ffe9a8" }], { duration: 1400 });
     });
     note.querySelectorAll("[data-act]").forEach((b) =>
       b.addEventListener("click", async (ev) => {
@@ -488,7 +529,8 @@ function renderAnnotations() {
 function startEdit(note, c) {
   const body = note.querySelector(".ctext");
   if (!body || note.querySelector("textarea")) return;
-  const ph = isStrike(c) ? "削除の理由（任意・空で保存すると理由を消す）" : "";
+  const qk = quickKind(c);
+  const ph = qk ? qk.ph : "";
   body.innerHTML = `<textarea placeholder="${esc(ph)}">${esc(c.text)}</textarea>
     <div class="cmeta"><button data-e="save">保存</button><button data-e="cancel">やめる</button></div>`;
   const ta = body.querySelector("textarea");
@@ -496,7 +538,7 @@ function startEdit(note, c) {
   ta.setSelectionRange(ta.value.length, ta.value.length);
   const save = async () => {
     const t = ta.value.trim();
-    if (!t && !isStrike(c)) return; // 取り消し線の理由は空にできる
+    if (!t && !qk) return; // 取り消し線・日本語再考の理由／補足は空にできる
     const res = await fetch("/api/report/comment", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: peekReport.id, commentId: c.id, action: "edit", text: t }),
@@ -632,9 +674,10 @@ function highlightQuote(c) {
       if (s > 0) node = node.splitText(s);
       const mark = doc.createElement("mark");
       mark.dataset.cid = c.id;
-      if (isStrike(c)) mark.classList.add("strike");
+      const qk = quickKind(c);
+      if (qk) mark.classList.add(qk.cls);
       if (c.resolved) mark.classList.add("done");
-      mark.title = isStrike(c) ? `削除提案${c.text ? `: ${c.text}` : ""}` : c.text;
+      mark.title = qk ? `${qk.titleHead}${c.text ? `: ${c.text}` : ""}` : c.text;
       mark.addEventListener("click", () => {
         const note = dpMargin.querySelector(`.cnote[data-cid="${c.id}"]`);
         note?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -707,11 +750,13 @@ function bindSelection(doc) {
       const text = sel?.toString().trim();
       if (!text || text.length < 2) return hideSelPop();
       if (!peekReport) return; // ピークの外の選択は対象外
+      // 取り消し線・日本語再考の理由欄は、次の文を選んだら「理由なし」のまま閉じる（指摘自体は保存済み）
+      if (cboxQuick) closeCbox();
       const rect = sel.getRangeAt(0).getBoundingClientRect();
       // iframe 内の座標は iframe の位置ぶんずらす
       const frame = $("dpFrame");
       const off = win === window || !frame ? { left: 0, top: 0 } : frame.getBoundingClientRect();
-      // 取り消し線は引用そのものが削除範囲なので長めに控える（保存時の切詰はサーバが kind ごとに行う）
+      // 取り消し線・日本語再考は引用そのものが対象範囲なので長めに控える（保存時の切詰はサーバが kind ごとに行う）
       pendingQuote = text.slice(0, 1000);
       pendingTruncated = text.length > 1000;
       pendingCtx = selectionContext(sel);
@@ -726,17 +771,41 @@ function bindSelection(doc) {
     }, 10);
   });
   doc.addEventListener("scroll", hideSelPop, true);
+  // ポップアップが出ている間だけ、1 キーで種別を選べる（C = コメント / D = 取り消し線 / J = 日本語を再考）。
+  // 選択した側の document にフォーカスがあるので、md ビューと iframe の両方で拾う
+  doc.addEventListener("keydown", (e) => {
+    if (selPop.style.display !== "block") return;
+    // Ctrl+C（コピー）などの修飾キー付きと、IME 変換中・入力欄でのキーは横取りしない
+    if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+    if (e.target?.closest?.("input, textarea, select, [contenteditable]")) return;
+    if (e.key === "Escape") return hideSelPop();
+    const btn = selPop.querySelector(`button[data-key="${CSS.escape(e.key.toLowerCase())}"]`);
+    if (!btn) return;
+    e.preventDefault(); // 押した文字が、このあと開くコメント枠に入力されないようにする
+    btn.click();
+  });
 }
 bindSelection(document);
 
 selPop.addEventListener("click", (ev) => {
   const kind = ev.target.closest("button")?.dataset.kind;
   if (!kind) return;
-  if (kind === "strike") return saveStrike(); // 取り消し線は入力枠を開かず、その場で保存する
   const r = selRect || selPop.getBoundingClientRect(); // 先に座標を確定させてから隠す
+  if (QUICK_KINDS[kind]) return saveQuick(kind, r); // 取り消し線・日本語再考はその場で保存し、理由欄を開く
   hideSelPop();
-  $("cboxQuote").textContent = `“${pendingQuote.slice(0, 120)}”`;
+  openCbox(r, null);
+});
+
+// 選択箇所の近くに入力枠を開く。quick = { kind, commentId } なら保存済みの取り消し線・日本語再考への理由／補足欄
+function openCbox(r, quick) {
+  cboxQuick = quick;
+  const qk = quick ? QUICK_KINDS[quick.kind] : null;
+  $("cboxQuote").textContent = `${qk ? `${qk.head}　` : ""}“${pendingQuote.slice(0, 120)}”`;
   $("cboxText").value = "";
+  $("cboxText").placeholder = qk ? qk.boxPh : "この箇所へのコメント（Ctrl/Cmd+Enter で保存）";
+  $("cboxSave").textContent = qk ? "確定（Enter）" : "コメントを追加";
+  $("cboxCancel").textContent = qk ? "理由なしで閉じる" : "やめる";
+  $("cboxErr").textContent = "";
   cbox.style.display = "block";
   const W = 320, H = cbox.offsetHeight || 200;
   const left = Math.min(Math.max(8, r.left), innerWidth - W - 12);
@@ -746,12 +815,19 @@ selPop.addEventListener("click", (ev) => {
   cbox.style.left = left + "px";
   cbox.style.top = top + "px";
   $("cboxText").focus();
-});
-$("cboxCancel").addEventListener("click", () => { cbox.style.display = "none"; });
+}
+function closeCbox() {
+  cbox.style.display = "none";
+  cboxQuick = null;
+}
+$("cboxCancel").addEventListener("click", closeCbox);
 $("cboxSave").addEventListener("click", saveComment);
 $("cboxText").addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveComment(); }
-  if (e.key === "Escape") cbox.style.display = "none";
+  if (e.isComposing) return; // IME の変換確定の Enter では保存しない
+  // 理由／補足欄は Enter だけで確定する（改行は Shift+Enter）。コメントは Ctrl/Cmd+Enter
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey || (cboxQuick && !e.shiftKey))) { e.preventDefault(); saveComment(); }
+  // Esc: コメントは破棄、取り消し線・日本語再考は理由なしのまま残る
+  if (e.key === "Escape") closeCbox();
 });
 
 // 選択中の箇所（pendingQuote / pendingCtx）に新しいコメントを付ける。失敗は throw
@@ -772,13 +848,14 @@ function clearSelections() {
 async function saveComment() {
   const box = $("cboxText");
   const text = box.value.trim();
+  if (cboxQuick) return saveQuickText(text);
   if (!text || !peekReport) return;
   const err = $("cboxErr");
   err.textContent = "";
   // 保存できるまで入力欄は閉じない（サーバ再起動などで失われないように）
   try {
     const payload = await postNewComment({ text, kind: "comment" });
-    cbox.style.display = "none";
+    closeCbox();
     box.value = "";
     clearSelections();
     applyComments(payload);
@@ -787,18 +864,38 @@ async function saveComment() {
   }
 }
 
-// 取り消し線 = 「この部分を削除」の提案。理由は書かずに即保存し、必要ならマージンの「編集」で後から足す
-async function saveStrike() {
+// ワンクリック種別（取り消し線 = 削除提案 / 日本語を再考）。押した時点で理由・補足なしで保存し、
+// 続けて理由／補足欄を開く。空のまま Enter・Esc・次の選択のどれでも「理由なし」で確定する
+async function saveQuick(kind, r) {
   hideSelPop();
   if (!peekReport || pendingQuote.trim().length < 2) return;
   if (pendingTruncated
-      && !confirm("選択が 1000 字を超えています。先頭 1000 字だけが削除対象として保存されます。続けますか？")) return;
+      && !confirm("選択が 1000 字を超えています。先頭 1000 字だけが対象として保存されます。続けますか？")) return;
   try {
-    const payload = await postNewComment({ text: "", kind: "strike" });
+    const payload = await postNewComment({ text: "", kind });
     clearSelections();
     applyComments(payload);
+    const created = payload.result?.[payload.result.length - 1];
+    if (created?.kind === kind) openCbox(r, { kind, commentId: created.id });
   } catch (e) {
-    alert(`取り消し線を保存できませんでした: ${e.message}`);
+    alert(`${QUICK_KINDS[kind].label}を保存できませんでした: ${e.message}`);
+  }
+}
+// 理由／補足欄の確定。空なら何も送らずに閉じる（指摘は理由なしで保存済み）
+async function saveQuickText(text) {
+  const { commentId } = cboxQuick;
+  if (!text || !peekReport) return closeCbox();
+  try {
+    const res = await fetch("/api/report/comment", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: peekReport.id, commentId, action: "edit", text }),
+    });
+    const payload = await res.json();
+    if (!res.ok || !payload.ok) throw new Error(payload.error || `保存に失敗しました (${res.status})`);
+    closeCbox();
+    applyComments(payload);
+  } catch (e) {
+    $("cboxErr").textContent = `✗ ${e.message}｜内容は消していません。もう一度 Enter を押してください`;
   }
 }
 
@@ -814,10 +911,9 @@ $("dpSend").addEventListener("click", () => {
   // 同じ文言が資料内に複数あっても箇所が決まるよう、引用の前に位置（ファイル:行）を添える
   open.forEach((c) => {
     const loc = locLabel(c);
-    // 取り消し線は「引用部分を消して」という指示として送る（理由があれば添える）
-    const body = isStrike(c)
-      ? `✂ 削除提案：この引用部分を削除${c.text ? `（理由: ${c.text}）` : ""}`
-      : c.text;
+    // 取り消し線は「引用部分を消して」、日本語再考は「引用部分を書き直して」という指示として送る（理由・補足があれば添える）
+    const qk = quickKind(c);
+    const body = qk ? qk.send(c.text) : c.text;
     items.push(`${loc ? `@ ${loc}\n` : ""}${quoteBlock(c.quote)}\n→ ${body}`);
   });
   const msg = [
@@ -827,7 +923,10 @@ $("dpSend").addEventListener("click", () => {
     `台帳: ${state?.ledger || "reports.json"}（この id のエントリの file が資料本体）`,
     `指摘 ${items.length} 件です。「@」が指摘箇所の位置（資料のファイル:行／節／同じ文言の何個目か）、`
       + `「|」で始まる行が報告書からの引用（もともとの本文）、「→」がそこへのレビューコメントです。`
-      + `「→ ✂ 削除提案」は、その引用部分を本文から削除してほしいという指摘です。`,
+      // 記号の凡例は含まれる種別のぶんだけ1回書く（扱い方の詳細は review-comments skill が持つ）
+      + Object.entries(QUICK_KINDS).filter(([k]) => open.some((c) => c.kind === k))
+        .map(([, q]) => `${q.legend}。`).join("")
+      + (open.some((c) => quickKind(c)) ? "記号の扱いは review-comments skill の定義に従ってください。" : ""),
     "",
     ...items.map((t, i) => `[指摘 ${i + 1}/${items.length}]\n${t}`),
   ].join("\n\n");
@@ -901,11 +1000,63 @@ async function selectOriginSession(reportId) {
   }
 }
 
-/* ---------- 超小型 markdown レンダラ（見出し/太字/コード/リスト/テーブルのみ） ---------- */
+/* ---------- 埋め込み画像・PDF ---------- */
+// 資料内の相対パスは報告ディレクトリ（サーバの /reports/）基準で解決する。
+// http(s) と data:image はそのまま、それ以外のスキーム（javascript: など）は使わない
+function resolveAsset(src) {
+  const s = String(src || "").trim();
+  if (/^(https?:|data:image\/)/i.test(s)) return s;
+  if (/^[a-z][\w+.-]*:/i.test(s)) return null;
+  return new URL(s, new URL("/reports/", location.href)).href;
+}
+const isPdf = (src) => /\.pdf(?:[?#].*)?$/i.test(src);
+const MD_LINK = /(!?)\[([^\]]*)\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/g;
+const MD_FIGURE = /^\s*!\[([^\]]*)\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)\s*$/;
+// block = 画像1つだけの行。PDF はそのときだけビューアを埋め込み、文中ではリンクにする
+function embedHtml(alt, src, block) {
+  const url = resolveAsset(src);
+  if (!url) return esc(alt);
+  if (isPdf(src)) {
+    if (!block) return linkHtml(`📄 ${alt || src}`, src);
+    return `<div class="doc-pdf"><iframe src="${esc(url)}" title="${esc(alt || src)}"></iframe>`
+      + `<div class="doc-pdf-bar">📄 ${esc(alt || src)} ・ <a href="${esc(url)}" target="_blank" rel="noopener">新しいタブで開く</a></div></div>`;
+  }
+  const img = `<img src="${esc(url)}" alt="${esc(alt)}" loading="lazy">`;
+  return block ? `<figure class="doc-fig">${img}${alt ? `<figcaption>${esc(alt)}</figcaption>` : ""}</figure>` : img;
+}
+function linkHtml(text, href) {
+  const url = resolveAsset(href);
+  return url ? `<a href="${esc(url)}" target="_blank" rel="noopener">${esc(text)}</a>` : esc(text);
+}
+// html 版（サンドボックス iframe）の中では PDF ビューアが動かないので、PDF の埋め込みは「開く」カードに差し替える
+function replacePdfEmbeds(doc) {
+  for (const el of doc.querySelectorAll("iframe, embed, object")) {
+    const raw = el.getAttribute("src") || el.getAttribute("data") || "";
+    if (!isPdf(raw)) continue;
+    const card = doc.createElement("div");
+    card.style.cssText = "margin:14px 0;padding:12px 14px;border:1px solid #e6e8ef;border-radius:8px;background:#f5f6fa;font-size:13px";
+    const a = doc.createElement("a");
+    a.href = new URL(raw, doc.baseURI).href;
+    a.target = "_blank";
+    a.rel = "noopener";
+    a.textContent = `📄 PDF を新しいタブで開く（${raw.split("/").pop()}）`;
+    card.append(a);
+    el.replaceWith(card);
+  }
+}
+
+/* ---------- 超小型 markdown レンダラ（見出し/太字/コード/リスト/テーブル/画像/リンク） ---------- */
 function miniMd(md) {
-  const inline = (str) => esc(str)
-    .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
-    .replace(/`([^`]+)`/g, "<code>$1</code>");
+  // コードスパンの中は記法を解釈しない。それ以外は ![画像](src) / [リンク](url) を先に HTML にする
+  const inline = (str) => str.split(/(`[^`]+`)/).map((part, i) => {
+    if (i % 2) return `<code>${esc(part.slice(1, -1))}</code>`;
+    let html = "", last = 0;
+    for (const m of part.matchAll(MD_LINK)) {
+      html += esc(part.slice(last, m.index)) + (m[1] ? embedHtml(m[2], m[3], false) : linkHtml(m[2], m[3]));
+      last = m.index + m[0].length;
+    }
+    return html + esc(part.slice(last));
+  }).join("").replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
   const lines = md.split("\n");
   const out = [];
   let list = false, table = false, fence = null, buf = [];
@@ -949,6 +1100,9 @@ function miniMd(md) {
       continue;
     }
     closeAll();
+    // 画像だけの行は段落ではなく図として置く（PDF はここでだけビューアごと埋め込む）
+    const fig = line.match(MD_FIGURE);
+    if (fig) { out.push(embedHtml(fig[1], fig[2], true)); continue; }
     if (line.trim()) out.push(`<p>${inline(line)}</p>`);
   }
   if (fence !== null) flushFence();
